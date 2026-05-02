@@ -50,6 +50,7 @@ app:
     - .tiff
     - .avif
     - .webp
+    - .svg
   # 上传图片的最大宽度
   # Maximum width of uploaded images
   image-max-size-width: 800

@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"io"
 	"mime/multipart"
+	"strings"
 
 	"github.com/haierkeys/custom-image-gateway/global"
 	"github.com/haierkeys/custom-image-gateway/pkg/code"
@@ -36,6 +37,7 @@ type ClientUploadParams struct {
 	Type   string `form:"type"`
 	Width  int    `form:"width"`
 	Height int    `form:"height"`
+	Path   string `form:"path"`
 }
 
 // UploadFile 上传文件
@@ -48,12 +50,16 @@ func (svc *Service) UploadFile(file multipart.File, fileHeader *multipart.FileHe
 	if !fileurl.IsContainExt(fileurl.ImageType, fileName, global.Config.App.UploadAllowExts) {
 		return nil, errors.New("file suffix is not supported.")
 	}
-	// 检查文件大小
-	if fileurl.IsFileSizeAllowed(fileurl.ImageType, file, global.Config.App.UploadMaxSize) {
+	// 检查文件大小 (SVG bypasses size limit)
+	if strings.ToLower(fileurl.GetFileExt(fileName)) != ".svg" && fileurl.IsFileSizeAllowed(fileurl.ImageType, file, global.Config.App.UploadMaxSize) {
 		return nil, errors.New("exceeded maximum file limit.")
 	}
 
-	var fileKey = fileurl.GetDatePath(global.Config.App.UploadDatePath) + fileName
+	var pathPrefix string
+	if params.Path != "" {
+		pathPrefix = fileurl.PathSuffixCheckAdd(params.Path, "/")
+	}
+	var fileKey = pathPrefix + fileurl.GetDatePath(global.Config.App.UploadDatePath) + fileName
 	var fileType = fileHeader.Header.Get("Content-Type")
 	var dstFileKey string
 
@@ -115,8 +121,8 @@ func (svc *Service) UserUploadFile(uid int64, file multipart.File, fileHeader *m
 	if !fileurl.IsContainExt(fileurl.ImageType, fileName, global.Config.App.UploadAllowExts) {
 		return nil, errors.New("file suffix is not supported.")
 	}
-	// 检查文件大小
-	if fileurl.IsFileSizeAllowed(fileurl.ImageType, file, global.Config.App.UploadMaxSize) {
+	// 检查文件大小 (SVG bypasses size limit)
+	if strings.ToLower(fileurl.GetFileExt(fileName)) != ".svg" && fileurl.IsFileSizeAllowed(fileurl.ImageType, file, global.Config.App.UploadMaxSize) {
 		return nil, errors.New("exceeded maximum file limit.")
 	}
 
@@ -177,6 +183,14 @@ func imageResize(params *ClientUploadParams, file multipart.File, fileKey string
 	_, err := file.Seek(0, 0)
 	if err != nil {
 		return nil, fileKey, fileType, err
+	}
+
+	if strings.ToLower(fileurl.GetFileExt(fileKey)) == ".svg" {
+		_, err = io.Copy(writer, file)
+		if err != nil {
+			return nil, fileKey, fileType, err
+		}
+		return writer, fileKey, fileType, nil
 	}
 
 	img, fileRealType, err := image.Decode(file)
